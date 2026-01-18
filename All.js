@@ -115,3 +115,123 @@
     }
 
 })();
+
+
+
+
+// ==UserScript==
+// @name         Socialearning - FB Mega Fast (Username Fix)
+// @namespace    http://tampermonkey.net/
+// @version      33.0
+// @description  Fixed Username Selection & Auto-Submit
+// @match        https://socialearning.org/*
+// @match        https://*.facebook.com/*
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @grant        GM_addStyle
+// ==/UserScript==
+
+(function () {
+    'use strict';
+
+    const url = location.href;
+
+    // --- 1. SETTINGS & PERSISTENT FILTER ---
+    if (url.includes("socialearning.org")) {
+        if (url.includes("/earner/available/tasks") && !url.includes("filter_social_media=5")) {
+            location.replace("https://socialearning.org/earner/available/tasks?filter_social_media=5");
+            return;
+        }
+    }
+
+    // --- 2. SOCIALEARNING: VIEW TASK ---
+    if (url.includes("/earner/available/tasks")) {
+        const viewTask = [...document.querySelectorAll("a, button")].find(e => e.textContent.trim().toLowerCase() === "view task");
+        if (viewTask) {
+            GM_setValue("fb_action_state", "start");
+            viewTask.click();
+        }
+    }
+
+    // --- 3. SUBMIT PAGE LOGIC (GYARAN USERNAME & SUBMIT) ---
+    if (url.includes("/earner/update/tasks/view/")) {
+        const mainCheck = setInterval(() => {
+            const state = GM_getValue("fb_action_state", "idle");
+            const viewJob = [...document.querySelectorAll("a")].find(b => b.textContent.includes("View Job"));
+            
+            // Nemo select box na username
+            const usernameSelect = document.querySelector("select[name='username']") || document.querySelector("select");
+            const fileInput = document.querySelector("input[type='file']");
+            const submitBtn = document.querySelector('button[type="submit"]') || document.querySelector('.btn-primary');
+
+            if (viewJob && state === "start") {
+                GM_setValue("fb_action_state", "working");
+                window.open(viewJob.href, "_blank");
+            }
+
+            // GYARA: Auto-Select Username
+            if (usernameSelect && usernameSelect.options.length > 1 && usernameSelect.selectedIndex <= 0) {
+                // Zai zaba na farkon bayan "Select Social Media" (yawanci index 1)
+                usernameSelect.selectedIndex = 1; 
+                usernameSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                console.log("Username selected automatically!");
+            }
+
+            // GYARA: Auto-Submit bayan saka hoto
+            if (state === "completed" || state === "working") {
+                if (fileInput && fileInput.files.length > 0) {
+                    console.log("Photo detected! Submitting...");
+                    clearInterval(mainCheck);
+                    GM_setValue("fb_action_state", "idle");
+                    
+                    setTimeout(() => {
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitBtn.click();
+                        }
+                    }, 1000);
+                }
+            }
+        }, 800);
+    }
+
+    // --- 4. FACEBOOK: FAST CLICK ---
+    if (url.includes("facebook.com")) {
+        let actionDone = false;
+
+        const fbScanner = setInterval(() => {
+            const elements = [...document.querySelectorAll('div[role="button"], span, i, div[aria-label], a[role="button"]')];
+
+            const isConfirmed = elements.some(el => {
+                const txt = el.innerText.trim();
+                const aria = (el.getAttribute('aria-label') || "").toLowerCase();
+                const isBtn = el.getAttribute('role') === 'button' || el.closest('div[role="button"]');
+                return isBtn && (txt === "Following" || txt === "Liked" || txt === "Requested" || txt === "Friends" || aria.includes("following") || aria.includes("liked"));
+            });
+
+            if (isConfirmed) {
+                clearInterval(fbScanner);
+                setTimeout(() => {
+                    GM_setValue("fb_action_state", "completed");
+                    window.close();
+                }, 3000);
+                return;
+            }
+
+            if (!actionDone) {
+                const target = elements.find(el => {
+                    const txt = el.innerText.trim();
+                    const aria = (el.getAttribute('aria-label') || "");
+                    return txt === "Follow" || txt === "Like" || txt === "Add Friend" || aria === "Follow" || aria === "Like";
+                });
+
+                if (target) {
+                    target.click();
+                    actionDone = true;
+                }
+            }
+        }, 300);
+    }
+
+})();
+                                 
