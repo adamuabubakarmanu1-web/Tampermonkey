@@ -64,7 +64,7 @@
                 const card = document.querySelector(".card-body");
                 const taskHeader = card ? card.innerText : "";
 
-                const blacklisted = ["INSTAGRAM/Post Repost", "INSTAGRAM/Reel Sound Use", "INSTAGRAM/Share to Story"];
+                const blacklisted = ["INSTAGRAM/Post Repost", "INSTAGRAM/Reel Sound Use", "INSTAGRAM/Share to Story", "INSTAGRAM/Vote"];
                 const isPostView = taskHeader.includes("INSTAGRAM/Post View");
 
                 if (blacklisted.some(t => taskHeader.includes(t)) || st === "dead_link" || st === "waiting_for_remove") {
@@ -115,7 +115,7 @@
         if (location.hostname.includes("instagram.com")) {
             const scan = setInterval(() => {
                 const txt = document.body.innerText;
-                if (txt.includes("Profile isn't available") || txt.includes("Restricted profile") || txt.includes("This content may be inappropriate")) {
+                if (txt.includes("Profile isn't available") || txt.includes("Restricted profile") || txt.includes("This content may be inappropriate") || txt.includes("Post isn't available") || txt. includes("Sorry, this page isn't available.")) {
                     clearInterval(scan); GM_setValue("ig_state", "dead_link"); window.close();
                 }
                 const btns = [...document.querySelectorAll("button")];
