@@ -1,3 +1,6 @@
+    }
+    }
+})();
 // ==UserScript==
 // @name Socialearning - IG + FB Ultra Fast Clean (V5.2)
 // @namespace http://tampermonkey.net/
