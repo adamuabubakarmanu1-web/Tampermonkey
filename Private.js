@@ -1,11 +1,8 @@
-    }
-    }
-})();
 // ==UserScript==
-// @name Socialearning - IG + FB Ultra Fast Clean (V5.2)
+// @name Socialearning - IG + FB Ultra Fast Clean (V6.4 - Notification Added)
 // @namespace http://tampermonkey.net/
-// @version 5.2
-// @description Ultra Fast Speed - No Logic Changes
+// @version 6.4
+// @description Strong Double Beep for Manual, 5 Beeps for No Tasks. Added Task Banner on Instagram.
 // @match https://socialearning.org/*
 // @match https://www.instagram.com/*
 // @match https://*.facebook.com/*
@@ -17,6 +14,32 @@
 (function () {
     'use strict';
 
+    // Function to play Beeps
+    function playNotificationSound(count = 2) {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function makeBeep(startTime) {
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime + startTime);
+
+            gainNode.gain.setValueAtTime(0.6, audioCtx.currentTime + startTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + startTime + 0.2);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start(audioCtx.currentTime + startTime);
+            oscillator.stop(audioCtx.currentTime + startTime + 0.2);
+        }
+
+        for(let i = 0; i < count; i++) {
+            makeBeep(i * 0.3);
+        }
+    }
+
     GM_addStyle(`
         #taskSwitchBtn,#igUserBtn{position:fixed;right:10px;z-index:99999;color:#fff;border-radius:50%;width:45px;height:45px;font-size:22px;border:2px solid white;cursor:pointer;display:flex;align-items:center;justify-content:center;}
         #taskSwitchBtn{top:50%;background:#28a745;}
@@ -24,6 +47,7 @@
         #taskMenu{position:fixed;top:50%;right:70px;transform:translateY(-50%);background:#000;color:#fff;padding:10px;border-radius:10px;display:none;z-index:99999;}
         #taskMenu div{padding:6px 10px;cursor:pointer;}
         #taskMenu div:hover{background:#444;}
+        #taskBanner{position:fixed;top:0;left:0;width:100%;background:red;color:white;text-align:center;padding:10px;font-weight:bold;font-size:20px;z-index:1000000;border-bottom:2px solid white;display:none;}
     `);
 
     const switchBtn = document.createElement("button");
@@ -42,7 +66,7 @@
     switchBtn.onclick = () => menu.style.display = menu.style.display === "block" ? "none" : "block";
     document.getElementById("igOpt").onclick = () => { GM_setValue("active_task", "instagram"); location.reload(); };
     document.getElementById("fbOpt").onclick = () => { GM_setValue("active_task", "facebook"); location.reload(); };
-    igBtn.onclick = () => { let u = prompt("Saka EXACT Instagram Username:", GM_getValue("stored_ig_user", "")); if (u) GM_setValue("stored_ig_user", u.trim()); };
+    igBtn.onclick = () => { let u = prompt("Enter EXACT Instagram Username:", GM_getValue("stored_ig_user", "")); if (u) GM_setValue("stored_ig_user", u.trim()); };
 
     let mode = GM_getValue("active_task", "instagram");
     const url = location.href;
@@ -55,10 +79,23 @@
         }
 
         if (url.includes("/earner/available/tasks")) {
+            let alertedOnThisLoad = false;
             const fast = setInterval(() => {
-                const b = [...document.querySelectorAll("a,button")].find(x => x.textContent.trim().toLowerCase() == "view task");
-                if (b) { clearInterval(fast); GM_setValue("ig_state", "pending"); b.click(); }
-            }, 300); // Kara sauri anan
+                const buttons = [...document.querySelectorAll("a,button")];
+                const b = buttons.find(x => x.textContent.trim().toLowerCase() == "view task");
+
+                if (b) {
+                    clearInterval(fast);
+                    GM_setValue("ig_state", "pending");
+                    b.click();
+                } else {
+                    const noTaskMsg = document.body.innerText.includes("No available tasks") || document.body.innerText.includes("Empty");
+                    if (noTaskMsg && !alertedOnThisLoad) {
+                        alertedOnThisLoad = true;
+                        playNotificationSound(5);
+                    }
+                }
+            }, 1000);
         }
 
         if (url.includes("/earner/update/tasks/view/")) {
@@ -67,6 +104,13 @@
                 const card = document.querySelector(".card-body");
                 const taskHeader = card ? card.innerText : "";
 
+                // Detection for Banner
+                if (taskHeader.includes("INSTAGRAM/Post Like")) GM_setValue("current_ig_task", "LIKE TASK");
+                else if (taskHeader.includes("INSTAGRAM/Post Comments")) GM_setValue("current_ig_task", "COMMENT TASK");
+                else if (taskHeader.includes("INSTAGRAM/Custom Comments")) GM_setValue("current_ig_task", "CUSTOM COMMENT TASK");
+                else GM_setValue("current_ig_task", "FOLLOW/VIEW TASK");
+
+                const isManualTask = taskHeader.includes("INSTAGRAM/Post Like") || taskHeader.includes("INSTAGRAM/Post Comments") || taskHeader.includes("INSTAGRAM/Custom Comments");
                 const blacklisted = ["INSTAGRAM/Post Repost", "INSTAGRAM/Reel Sound Use", "INSTAGRAM/Share to Story", "INSTAGRAM/Vote"];
                 const isPostView = taskHeader.includes("INSTAGRAM/Post View");
 
@@ -92,6 +136,7 @@
 
                 const v = [...document.querySelectorAll("a")].find(b => b.textContent.includes("View Job"));
                 if (v && st === "pending" && !isPostView) {
+                    if (isManualTask) { playNotificationSound(2); }
                     GM_setValue("ig_state", "opened");
                     window.open(v.href, "_blank");
                 }
@@ -107,68 +152,97 @@
                             s.dispatchEvent(new Event("change"));
                             clearInterval(loop);
                             GM_setValue("ig_state", "idle");
-                            setTimeout(() => { if(sub) sub.click(); }, 300); // Rage jinkiri zuwa 300ms
+                            setTimeout(() => { if(sub) sub.click(); }, 300);
                             break;
                         }
                     }
                 }
-            }, 400); // Kara sauri a dukan lallibar buttons (Interval)
+            }, 400);
         }
 
         if (location.hostname.includes("instagram.com")) {
+            // Add Banner to Instagram Header
+            const banner = document.createElement("div");
+            banner.id = "taskBanner";
+            banner.innerText = GM_getValue("current_ig_task", "TASK ACTIVE");
+            document.body.appendChild(banner);
+            banner.style.display = "block";
+
             const scan = setInterval(() => {
                 const txt = document.body.innerText;
-                if (txt.includes("Profile isn't available") || txt.includes("Restricted profile") || txt.includes("This content may be inappropriate") || txt.includes("Post isn't available") || txt. includes("Sorry, this page isn't available.")) {
+                if (txt.includes("Profile isn't available") || txt.includes("Restricted profile") || txt.includes("This content may be inappropriate") || txt. includes("Post isn't available") || txt. includes("Sorry, this page isn't available.")) {
                     clearInterval(scan); GM_setValue("ig_state", "dead_link"); window.close();
                 }
                 const btns = [...document.querySelectorAll("button")];
-                if (btns.some(b => ["Following", "Requested", "Kuna biyo", "An aika buƙata"].includes(b.innerText))) {
+                if (btns.some(b => ["Following", "Requested"].includes(b.innerText))) {
                     clearInterval(scan); GM_setValue("ig_state", "completed"); window.close();
                 } else {
-                    const f = btns.find(b => b.innerText == "Follow" || b.innerText == "Biyo");
+                    const f = btns.find(b => b.innerText == "Follow");
                     if (f) f.click();
                 }
-            }, 600); // Kara saurin follow
+            }, 600);
         }
     }
 
-    // ================= FACEBOOK LOGIC (Bamu taba komai ba) =================
+    // ================= FACEBOOK LOGIC =================
     if (mode === "facebook") {
         if (url.includes("/earner/available/tasks") && !url.includes("filter_social_media=5")) {
             location.replace("https://socialearning.org/earner/available/tasks?filter_social_media=5");
             return;
         }
         if (url.includes("/earner/available/tasks")) {
-            const b = [...document.querySelectorAll("a,button")].find(x => x.textContent.trim().toLowerCase() == "view task");
-            if (b) { GM_setValue("fb_state", "start"); b.click(); }
+            let alertedOnThisLoadFB = false;
+            const fbInterval = setInterval(() => {
+                const b = [...document.querySelectorAll("a,button")].find(x => x.textContent.trim().toLowerCase() == "view task");
+                if (b) {
+                    clearInterval(fbInterval);
+                    GM_setValue("fb_state", "start");
+                    b.click();
+                } else {
+                    const noTaskMsg = document.body.innerText.includes("No available tasks") || document.body.innerText.includes("Empty");
+                    if (noTaskMsg && !alertedOnThisLoadFB) {
+                        alertedOnThisLoadFB = true;
+                        playNotificationSound(5);
+                    }
+                }
+            }, 1000);
         }
         if (url.includes("/earner/update/tasks/view/")) {
             const loop = setInterval(() => {
                 const st = GM_getValue("fb_state", "idle");
+                const card = document.querySelector(".card-body");
+                const taskHeader = card ? card.innerText : "";
+                const isManualFB = taskHeader.includes("Like") || taskHeader.includes("Comment");
+
                 const v = [...document.querySelectorAll("a")].find(b => b.textContent.includes("View Job"));
                 const s = document.querySelector("select[name='username']") || document.querySelector("select");
                 const f = document.querySelector("input[type='file']");
                 const sub = document.querySelector('button[type="submit"]') || document.querySelector('.btn-primary');
-                if (v && st === "start") { GM_setValue("fb_state", "working"); window.open(v.href, "_blank"); }
+
+                if (v && st === "start") {
+                    if (isManualFB) { playNotificationSound(2); }
+                    GM_setValue("fb_state", "working");
+                    window.open(v.href, "_blank");
+                }
                 if (s && s.selectedIndex <= 0) { s.selectedIndex = 1; s.dispatchEvent(new Event("change", { bubbles: true })); }
                 if ((st === "working" || st === "completed") && f && f.files.length > 0) {
                     clearInterval(loop); GM_setValue("fb_state", "idle");
                     setTimeout(() => { sub.disabled = false; sub.click(); }, 600);
                 }
-            }, 400); // Kara sauri
+            }, 400);
         }
         if (url.includes("facebook.com")) {
             let done = false;
             const scan = setInterval(() => {
                 const els = [...document.querySelectorAll('div[role="button"], span, i, a[role="button"], button')];
-                const isFinished = els.some(e => ["Following", "Liked", "Requested", "Friends", "An biyo", "So"].includes(e.innerText.trim()));
+                const isFinished = els.some(e => ["Following", "Liked", "Requested", "Friends"].includes(e.innerText.trim()));
                 if (isFinished) {
                     clearInterval(scan);
-                    setTimeout(() => { GM_setValue("fb_state", "completed"); window.close(); }, 1000); // Rage jinkirin rufewa
+                    setTimeout(() => { GM_setValue("fb_state", "completed"); window.close(); }, 1000);
                     return;
                 }
                 if (!done) {
-                    const t = els.find(e => ["Follow", "Like", "Add Friend", "Biyo", "So", "Ƙara Aboki"].includes(e.innerText.trim()));
+                    const t = els.find(e => ["Follow", "Like", "Add Friend"].includes(e.innerText.trim()));
                     if (t) { t.click(); done = true; }
                 }
             }, 600);
